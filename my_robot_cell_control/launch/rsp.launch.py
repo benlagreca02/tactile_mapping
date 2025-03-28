@@ -101,7 +101,7 @@ def generate_launch_description():
                 "ur10",
                 "ur10e",
                 "ur16e",
-                "ur5e",
+                "ur20",
                 "ur30",
             ],
             default_value="ur5e",

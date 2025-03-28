@@ -31,7 +31,7 @@ def generate_launch_description():
                 "ur10",
                 "ur10e",
                 "ur16e",
-                "ur5e",
+                "ur20",
                 "ur30",
             ],
             default_value="ur5e",
@@ -69,7 +69,7 @@ def generate_launch_description():
                     "tf_prefix": [LaunchConfiguration("ur_type"), "_"],
                     "rviz_config_file": PathJoinSubstitution(
                         [
-                            FindPackageShare("custom_description"),
+                            FindPackageShare("my_robot_cell_description"),
                             "rviz",
                             "urdf.rviz",
                         ]
