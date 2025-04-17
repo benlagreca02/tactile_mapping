@@ -21,7 +21,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'scanning = scanning.scanning:main'
+            'scanning = scanning.scanning:main',
+            'fake_freedrive = scanning.fake_freedrive:main',
         ],
     },
 )

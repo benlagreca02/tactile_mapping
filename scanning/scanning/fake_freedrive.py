@@ -9,27 +9,22 @@ from std_srvs.srv import Trigger
 from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import WrenchStamped
 
-class ScanNode(Node):
+class FakeFreedrive(Node):
     def __init__(self):
-        super().__init__('scan_node')
-        self.get_logger().info("Scan node created.")
+        super().__init__('FakeFreedrive')
+        self.get_logger().info("FakeFreedrive node created")
         
         # print("BRUH")
         # Publisher for Twist message
         self.twist_publisher = self.create_publisher(TwistStamped, '/servo_node/delta_twist_cmds', 10)
  
         # Timer for periodic publishing of twist messages
-        self.timer_period = 0.00625  # PER SECOND
+        self.timer_period = 0.0025  # PER SECOND
  
-        self.end_effector_pose_sub = self.create_subscription(PoseStamped, '/tcp_pose_broadcaster/pose', self.tcp_callback, 10)
-        self.end_effector_pose_sub  # remove "unused variable" warning
-
         self.wrench_sub = self.create_subscription(WrenchStamped, '/force_torque_sensor_broadcaster/wrench', self.wrench_callback, 10)
         self.wrench_sub
 
-        # subscriptions should update these
         self.wrench = None
-        self.tcp_pose = None
 
         self.get_logger().info("Requesting servoing...")
         self.start_servoing()
@@ -60,10 +55,6 @@ class ScanNode(Node):
         except Exception as e:
             self.get_logger().error(f"Service call failed: {str(e)}")
 
-    
-    def tcp_callback(self, pose):
-        # self.get_logger().info(f"Pose callback!")
-        self.tcp_pose = pose
 
     def wrench_callback(self, w):
         # self.get_logger().info(f"Wrench callback!")
@@ -71,10 +62,10 @@ class ScanNode(Node):
 
 
     def timer_callback(self): 
-        if  self.wrench is None or self.tcp_pose is None:
+        if  self.wrench is None:
             # Don't do anything yet
             # self.twist_publisher.publish(twist_msg)
-            self.get_logger().info(f'Waiting for wrench and pose: {self.wrench} {self.tcp_pose}')
+            # self.get_logger().info(f'Waiting for wrench and pose: {self.wrench} {self.tcp_pose}')
             return
         
         # Create and publish Twist message
@@ -85,50 +76,39 @@ class ScanNode(Node):
         # 1. First, try getting it to just do 0 force (?)
 
         # twist_msg.twist = self.fake_freedrive()
-        twist_msg.twist = self.apply_downward_force_and_translate()
+        twist_msg.twist = self.fake_freedrive()
 
         # Publish the twist message
         self.twist_publisher.publish(twist_msg)
-
-    def apply_downward_force_and_translate(self):
-        twist_msg = Twist()
-        target_force = -4
-        forceErr = self.wrench.wrench.force.z - target_force
-        kpDown = 2.0
-
-        if abs(forceErr) > 0.5:
-            twist_msg.linear.z = self.d(kpDown * forceErr)
-
-        # self.get_logger().info(f'driving with kp={kp}\terr={err}\tdrive={kp*err}')
-
-        # Move in X direction with constant speed
-        twist_msg.linear.x = self.d(3)
-
-        # twist_msg.linear.z = self.d(-2.0) # kp * err
-        return twist_msg
-
-
-
 
     # Build Twist message to do a "fake freedrive" mode, kind of
     def fake_freedrive(self):
         twist_msg = Twist()
 
+        THRESH = 15
+        BASE = -0.9
         # Could make this a lot cleaner but whatever
-        if self.wrench.wrench.force.x > 10:
-            twist_msg.linear.x = self.d(-8)
-        if self.wrench.wrench.force.y > 10:
-            twist_msg.linear.y = self.d(-8)
+        x,y,z = self.wrench.wrench.force.x, self.wrench.wrench.force.y, self.wrench.wrench.force.z
+        if x > THRESH:
+            twist_msg.linear.x = self.d(BASE*x)
+        elif x < -THRESH:
+            twist_msg.linear.x = self.d(BASE*x)
 
-        if self.wrench.wrench.force.x < -10:
-            twist_msg.linear.x = self.d(8)
-        if self.wrench.wrench.force.y < -10:
-            twist_msg.linear.y = self.d(8)
+        if y > THRESH:
+            twist_msg.linear.y = self.d(BASE*y)
+        elif y < -THRESH:
+            twist_msg.linear.y = self.d(BASE*y)
+
+        if z > THRESH:
+            twist_msg.linear.z = self.d(-BASE*z)
+        elif z < -THRESH:
+            twist_msg.linear.z = self.d(-BASE*z)
+
         return twist_msg
 
 def main(args=None):
     rclpy.init(args=args)
-    node = ScanNode()
+    node = FakeFreedrive()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
