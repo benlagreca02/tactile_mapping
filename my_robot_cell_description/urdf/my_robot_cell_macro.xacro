@@ -1,0 +1,97 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- Include the true and honest robot from UR's code -->
+  <xacro:include filename="$(find ur_description)/urdf/ur_macro.xacro"/>
+
+  <xacro:macro name="my_robot_cell" params="
+    parent
+    *origin
+    ur_type
+    joint_limits_parameters_file
+    kinematics_parameters_file
+    physical_parameters_file
+    visual_parameters_file
+    ">
+
+    <!-- connects world(?) to table -->
+    <joint name="table_base_joint" type="fixed">
+      <xacro:insert_block name="origin" />
+      <parent link="${parent}" />
+      <child link="table" />
+    </joint>
+
+
+    <!-- The table the robot sits on -->
+    <link name="table">
+      <visual>
+        <geometry>
+          <box size="1 2 0.05"/>
+        </geometry>
+        <origin xyz="-0.5 0 -0.025" rpy="0 0 0"/>
+        <material name="white">
+          <color rgba="1 1 1 1"/>
+        </material>
+      </visual>
+      <collision>
+        <geometry>
+          <box size="1 2 0.05"/>
+        </geometry>
+        <!-- TODO, measure how thick and how far in on the real table the mounting plate is-->
+        <origin xyz="-0.5 0 -0.020" rpy="0 0 0"/>
+      </collision>
+    </link>
+
+    <joint name="base_to_robot_mount" type="fixed">
+      <parent link="table"/>
+      <child link="robot_mount"/>
+      <origin xyz="-0.15 0 0.025" rpy="0 0 ${pi}" />
+    </joint>
+
+    <!-- Link that joins OUR stuff, to the robot -->
+    <link name="robot_mount"/>
+
+    <!--This will create the specific robot -->
+    <!-- Call UR's code for making the true and honest robot arm" -->
+    <xacro:ur_robot
+      name="${ur_type}"
+      tf_prefix="${ur_type}_"
+      parent="robot_mount"
+      joint_limits_parameters_file="${joint_limits_parameters_file}"
+      kinematics_parameters_file="${kinematics_parameters_file}"
+      physical_parameters_file="${physical_parameters_file}"
+      visual_parameters_file="${visual_parameters_file}"
+      generate_ros2_control_tag="false"
+    >
+      <origin xyz="0 0 0" rpy="0 0 0" />
+    </xacro:ur_robot>
+
+
+    <!-- End effector -->
+    <joint name="tool0_to_end_effector" type="fixed">
+        <parent link="${ur_type}_tool0"/>
+        <child link="end_effector"/>
+        <origin xyz="0 0 0"/>
+    </joint>
+
+    <link name="end_effector">
+        <visual>
+            <material name="blue">
+              <color rgba="0 0.7 1 1"/>
+            </material>
+            <geometry>
+                <cylinder length="0.125" radius="0.0125"/>
+            </geometry>
+            <origin xyz="0 0 0.0625"/>
+        </visual>
+        <collision>
+            <geometry>
+                <cylinder length="0.125" radius="0.0125"/>
+            </geometry>
+            <origin xyz="0 0 0.0625"/>
+        </collision>
+    </link>
+
+
+  </xacro:macro>
+
+</robot>
