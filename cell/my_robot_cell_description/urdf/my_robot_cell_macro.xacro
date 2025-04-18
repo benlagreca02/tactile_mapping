@@ -37,14 +37,14 @@
           <box size="1 2 0.05"/>
         </geometry>
         <!-- TODO, measure how thick and how far in on the real table the mounting plate is-->
-        <origin xyz="-0.5 0 -0.020" rpy="0 0 ${pi/2}"/>
+        <origin xyz="-0.5 0 -0.020" rpy="0 0 0"/>
       </collision>
     </link>
 
     <joint name="base_to_robot_mount" type="fixed">
       <parent link="table"/>
       <child link="robot_mount"/>
-      <origin xyz="-0.15 0 0.025" rpy="0 0 ${pi}" />
+      <origin xyz="-0.15 0 0.025" rpy="0 0 ${pi/2}" />
     </joint>
 
     <!-- Link that joins OUR stuff, to the robot -->
