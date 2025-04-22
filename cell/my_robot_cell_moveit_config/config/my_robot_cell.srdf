@@ -10,10 +10,9 @@
     <!--CHAINS: When a chain is specified, all the links along the chain (including endpoints) are included in the group. Additionally, all the joints that are parents to included links are also included. This means that joints along the chain and the parent joint of the base link are included in the group-->
     <!--SUBGROUPS: Groups can also be formed by referencing to already defined group names-->
     <group name="ur_arm">
-        <chain base_link="ur5e_base_link" tip_link="ur5e_tool0"/>
+        <chain base_link="ur5e_base_link" tip_link="tip"/>
     </group>
     <group name="ur_tool">
-        <link name="end_effector"/>
         <link name="tip"/>
     </group>
     <!--GROUP STATES: Purpose: Define a named state for a particular group, in terms of joint values. This is useful to define states like 'folded arms'-->
@@ -34,7 +33,6 @@
         <joint name="ur5e_wrist_3_joint" value="0"/>
     </group_state>
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
-    <end_effector name="end_effector" parent_link="ur5e_tool0" group="ur_tool"/>
     <end_effector name="tip" parent_link="end_effector" group="ur_tool"/>
     <!--VIRTUAL JOINT: Purpose: this element defines a virtual joint between a robot link and an external frame of reference (considered fixed with respect to the robot)-->
     <virtual_joint name="virtual_joint" type="fixed" parent_frame="world" child_link="table"/>

@@ -5,9 +5,12 @@ import math
 import time
 from builtin_interfaces.msg import Time
 
+from std_msgs.msg import Bool
 from std_srvs.srv import Trigger
 from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import WrenchStamped
+
+from controller_manager_msgs.srv import SwitchController
 
 class ScanNode(Node):
     def __init__(self):
@@ -33,8 +36,9 @@ class ScanNode(Node):
 
         self.get_logger().info("Requesting servoing...")
         self.start_servoing()
-
         self.get_logger().info("Servoing activated, Activate interlock! Dyna-therms connected! Infra-cells up; mega-thrusters are go!")
+
+        # Main timer loop
         self.timer = self.create_timer(self.timer_period, self.timer_callback)  
 
     def d(self, speed):
@@ -48,18 +52,7 @@ class ScanNode(Node):
             self.get_logger().info('service not available, checking again in a second...')
         req = Trigger.Request()
         future = self.cli.call_async(req)
-        future.add_done_callback(self.servo_service_callback)
-
-    def servo_service_callback(self, future):
-        try:
-            response = future.result()
-            if response.success:
-                self.get_logger().info(f"Service call succeeded: {response.message}")
-            else:
-                self.get_logger().warn(f"Service call failed: {response.message}")
-        except Exception as e:
-            self.get_logger().error(f"Service call failed: {str(e)}")
-
+        rclpy.spin_until_future_complete(self, future)
     
     def tcp_callback(self, pose):
         # self.get_logger().info(f"Pose callback!")
@@ -74,18 +67,20 @@ class ScanNode(Node):
         if  self.wrench is None or self.tcp_pose is None:
             # Don't do anything yet
             # self.twist_publisher.publish(twist_msg)
-            self.get_logger().info(f'Waiting for wrench and pose: {self.wrench} {self.tcp_pose}')
+            # self.get_logger().info(f'Waiting for wrench and pose: {self.wrench} {self.tcp_pose}')
             return
 
         # Create and publish Twist message
         twist_msg = TwistStamped()
         twist_msg.header.stamp = self.get_clock().now().to_msg()  # Current time
-        twist_msg.header.frame_id="tip"
+        twist_msg.header.frame_id="end_effector"
 
         # 1. First, try getting it to just do 0 force (?)
 
         # twist_msg.twist = self.fake_freedrive()
         # twist_msg.twist = self.apply_downward_force_and_translate()
+        
+        # just wiggles end effector around with angular twists
         twist_msg.twist = self.test_drive()
 
         # Publish the twist message
@@ -95,7 +90,7 @@ class ScanNode(Node):
         twist_msg = Twist()
         bruh = 150*math.cos(2 * math.pi * 0.125 * time.time())
         twist_msg.angular.y = self.d(bruh)
-        self.get_logger().info(f"twistval: {bruh}")
+        # self.get_logger().info(f"twistval: {bruh}")
         return twist_msg
 
     def apply_downward_force_and_translate(self):
