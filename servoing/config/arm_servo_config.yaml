@@ -40,13 +40,22 @@ smoothing_filter_plugin_name: "online_signal_smoothing::ButterworthFilterPlugin"
 # then is_primary_planning_scene_monitor needs to be set to false.
 is_primary_planning_scene_monitor: true
 
-## MoveIt properties
-move_group_name:  ur_arm  # Often 'manipulator' or 'arm'
-planning_frame: ur5e_base  # The MoveIt planning frame. Often 'base_link' or 'world'
+## 
+#
+#MoveIt properties
+#
+## 
 
-## Other frames
-ee_frame_name: tip  # The name of the end effector link, used to return the EE pose
-robot_link_command_frame:  tip # commands must be given in the frame of a robot link. Usually either the base or end effector
+move_group_name:  ur_arm  # Often 'manipulator' or 'arm' 
+planning_frame: tip       # The MoveIt planning frame. Often 'base_link' or 'world'
+ee_frame_name: tip        # The name of the end effector link, used to return the EE pose
+robot_link_command_frame:  ur5e_base # commands must be given in the frame of a robot link. Usually either the base or end effector
+
+
+
+
+
+
 
 ## Stopping behaviour
 incoming_command_timeout:  0.1  # Stop servoing if X seconds elapse without a new command

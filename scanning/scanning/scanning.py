@@ -22,7 +22,7 @@ class ScanNode(Node):
         self.twist_publisher = self.create_publisher(TwistStamped, '/servo_node/delta_twist_cmds', 10)
  
         # Timer for periodic publishing of twist messages
-        self.timer_period = 0.00625  # PER SECOND
+        self.timer_period = 0.00125  # PER SECOND
  
         self.end_effector_pose_sub = self.create_subscription(PoseStamped, '/tcp_pose_broadcaster/pose', self.tcp_callback, 10)
         self.end_effector_pose_sub  # remove "unused variable" warning
@@ -39,6 +39,7 @@ class ScanNode(Node):
         self.get_logger().info("Servoing activated, Activate interlock! Dyna-therms connected! Infra-cells up; mega-thrusters are go!")
 
         # Main timer loop
+        self.t0 = time.time()
         self.timer = self.create_timer(self.timer_period, self.timer_callback)  
 
     def d(self, speed):
@@ -68,30 +69,42 @@ class ScanNode(Node):
             # Don't do anything yet
             # self.twist_publisher.publish(twist_msg)
             # self.get_logger().info(f'Waiting for wrench and pose: {self.wrench} {self.tcp_pose}')
+            self.ready_to_start = True
+            self.scanning = False
             return
 
         # Create and publish Twist message
         twist_msg = TwistStamped()
         twist_msg.header.stamp = self.get_clock().now().to_msg()  # Current time
-        twist_msg.header.frame_id="end_effector"
+        # This is spec. in the armconfig servoing yaml
+        # twist_msg.header.frame_id="tip"
 
-        # 1. First, try getting it to just do 0 force (?)
-
-        # twist_msg.twist = self.fake_freedrive()
-        # twist_msg.twist = self.apply_downward_force_and_translate()
+        # twist_msg.twist = self.test_drive()
         
-        # just wiggles end effector around with angular twists
-        twist_msg.twist = self.test_drive()
+        # twist_msg.twist = self.fake_freedrive()
+        twist_msg.twist = self.apply_downward_force_and_translate()  
+
+        # TODO make funciton for "align along Z axis so tip is upright"
+        # TODO make bound checking, so "apply_downward..." func stops
+        # TODO make "reset tip" funciton to move us back to the start
+        # TODO keep GIANT list of all points
+        # TODO feed that list to some STL generate code
+        # TODO go home and quit
 
         # Publish the twist message
         self.twist_publisher.publish(twist_msg)
+        self.print_tcp_pose()
+        
 
-    def test_drive(self):
-        twist_msg = Twist()
-        bruh = 150*math.cos(2 * math.pi * 0.125 * time.time())
-        twist_msg.angular.y = self.d(bruh)
-        # self.get_logger().info(f"twistval: {bruh}")
-        return twist_msg
+    def print_tcp_pose(self):
+        point = self.tcp_pose.pose.position
+        x,y,z = point.x, point.y, point.z
+        quat = self.tcp_pose.pose.orientation
+        rx = quat.x
+        ry = quat.y
+        rz = quat.z
+        rw = quat.w
+        self.get_logger().info(f"TIP POSE: {x:.4f} {y:.4f} {z:.4f} Quat: {rx:.4f} {ry:.4f} {rz:.4f} {rw:.4f}")
 
     def apply_downward_force_and_translate(self):
         fz = self.wrench.wrench.force.z 
@@ -100,33 +113,52 @@ class ScanNode(Node):
         ty = self.wrench.wrench.torque.y 
         twist_msg = Twist()
 
-        # has to push with at least SOME force
-        target_force = -5
-        forceErrZ = fz - target_force
-        kpDown = 0.2
+        # Looks like when hanging still, force is 29
+        # Pretty noisy, but hangs round 29.0 - 29.4
+        TRIM = 29.3
+        target_force_z = -5.0  # Force "target" in z direction
+        kpz = 0.45             # Factor for 'correction' Main driver in Up/down
 
-        # If there is force error, drive downwards
-        z = 0
-        if abs(forceErrZ) > 1:
-            z = self.d(forceErrZ * kpDown)
-            twist_msg.linear.z = z
+        FORCE_Z_TOL = 0.1
+        FORCE_X_TOL = 0.5
+        kpx = 0.2   # slowdown in L-R based on force in X
+        kpxz = 0.2  # slowdown in U-D based on force in X
+        kpr = 10.0   # rotation speed based on force in X
+        BASE_X_SPEED = 2.0  # CHANGE THIS TO CHANGE DIRECTION
 
-        kpTwist = 5
-        if abs(fx) > 3:
-            twist_msg.angular.y = self.d(fx*kpTwist)
+        forceErrZ = fz - target_force_z - TRIM
 
 
-        # decrease speed in x dir if there is force in x dir
-        kpX = 0.4
-        x = self.d(1 - kpX*fx)
-        twist_msg.linear.x = x
+        twist_msg.linear.z = self.d(forceErrZ * kpz)
 
-        # self.get_logger().info(f'z={z:.4f}\tx={x:.4f}\t FORCE: z: {fz:.2f} zerr:{forceErrZ}\tx: {fz:.2f}\t TORQUE: tx:{tx:.2f}\tty:{ty:.2f}')
-        self.get_logger().info(f'z={z:.4f}\tx={x:.4f}\tfz: {fz:.2f}\t')
+        # set a base speed, this will be increased, or decreased based on forces
+        twist_msg.linear.x = self.d(BASE_X_SPEED)
 
+        # slow down in x if force in x is high IN EITHER DIRECTION
+        twist_msg.linear.x -= self.d(fx * kpx * (1 if fx > 0 else -1)) 
+
+        # move up faster if fx is bigger, down faster if fx < 0
+        # twist_msg.linear.z += self.d(fx * -kpxz)
+
+        # rotate accordingly
+        if abs(fx) > FORCE_X_TOL:
+            twist_msg.angular.y = self.d(fx*kpr)
+
+        # self.get_logger().info(f'fz: {fz:.4f}\t Adjusted: {(fz-TRIM):.3f}\tforceErrZ: {forceErrZ:.4f}')
+        self.get_logger().info(f'fx: {fx:.4f}')
         return twist_msg
 
 
+    def test_drive(self):
+        '''
+        Wiggles end effector to ensure its moving wrt the tip
+        '''
+        twist_msg = Twist()
+        # bruh = 450*math.sin(2 * math.pi * 0.125 * time.time())
+        # twist_msg.angular.y = self.d(bruh)
+        # twist_msg.linear.x = self.d(50)
+        # twist_msg.linear.z = self.d(10)
+        return twist_msg
 
 
     # Build Twist message to do a "fake freedrive" mode, kind of
