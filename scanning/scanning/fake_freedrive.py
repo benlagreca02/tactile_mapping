@@ -71,7 +71,6 @@ class FakeFreedrive(Node):
         # Create and publish Twist message
         twist_msg = TwistStamped()
         twist_msg.header.stamp = self.get_clock().now().to_msg()  # Current time
-        twist_msg.header.frame_id="end_effector"
 
         # 1. First, try getting it to just do 0 force (?)
 

@@ -11,6 +11,7 @@ from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import WrenchStamped
 
 from controller_manager_msgs.srv import SwitchController
+import tf_transformations as tf
 
 class ScanNode(Node):
     def __init__(self):
@@ -63,6 +64,30 @@ class ScanNode(Node):
         # self.get_logger().info(f"Wrench callback!")
         self.wrench = w
 
+    def is_aligned(self, tolerance) -> bool:
+        # TODO FIX THIS
+        return False
+        if self.tcp_pose is None:
+            return False
+
+        # Get Quaternion of tool
+        bruh = self.tcp_pose.pose
+        qu = self.tcp_pose.pose.orientation
+        curr = [qu.x, qu.y, qu.z, qu.w]
+
+        # Our "known good" one 
+        target = [0.0, 1.0, 0.0, 0.0]
+
+        delta = []
+        for q, t in zip(curr, target):
+            delta.append(abs(q-t))
+
+        self.get_logger().info(f'{delta}')
+        if max(delta) > tolerance:
+            return False
+
+        return True
+
 
     def timer_callback(self): 
         if  self.wrench is None or self.tcp_pose is None:
@@ -80,9 +105,14 @@ class ScanNode(Node):
         # twist_msg.header.frame_id="tip"
 
         # twist_msg.twist = self.test_drive()
-        
-        # twist_msg.twist = self.fake_freedrive()
-        twist_msg.twist = self.apply_downward_force_and_translate()  
+        # twist_msg.twist = self.apply_downward_force_and_translate()  
+        if not self.is_aligned(0.5):
+            # self.get_logger().info("aligning...")
+            twist_msg.twist = self.align_z()
+        else:
+            # self.get_logger().info("Done!")
+            pass
+
 
         # TODO make funciton for "align along Z axis so tip is upright"
         # TODO make bound checking, so "apply_downward..." func stops
@@ -93,7 +123,7 @@ class ScanNode(Node):
 
         # Publish the twist message
         self.twist_publisher.publish(twist_msg)
-        self.print_tcp_pose()
+        # self.print_tcp_pose()
         
 
     def print_tcp_pose(self):
@@ -104,7 +134,49 @@ class ScanNode(Node):
         ry = quat.y
         rz = quat.z
         rw = quat.w
-        self.get_logger().info(f"TIP POSE: {x:.4f} {y:.4f} {z:.4f} Quat: {rx:.4f} {ry:.4f} {rz:.4f} {rw:.4f}")
+        self.get_logger().info(f"TIP POSE: {x:.4f} {y:.4f} {z:.4f}\tQuat: {rx:.4f} {ry:.4f} {rz:.4f} {rw:.4f}")
+
+
+    def normRPY(self, theta):
+        return (theta + math.pi) % (2*math.pi) - math.pi
+
+    def align_z(self):
+        quat = self.tcp_pose.pose.orientation
+        rx = quat.x
+        ry = quat.y
+        rz = quat.z
+        rw = quat.w
+        twist_msg = Twist()
+
+        kpr = 400
+        kpp = 400
+        kpy = 400
+        
+        current = [rx, ry, rz, rw]
+        # target = [0.0, 1.0, 0.0, 0.0]
+
+        cr, cp, cy = tf.euler_from_quaternion(current)
+        # tr, tp, ty = tf.euler_from_quaternion(target)
+
+        
+        tr = math.pi if cr > 0 else -math.pi
+        tp = 0  
+        ty = math.pi if cy > 0 else -math.pi
+
+        dr = tr-cr
+        dp = tp-cp
+        dy = ty-cy
+
+
+        twist_msg.angular.x = self.d(dr * -kpr)
+        twist_msg.angular.y = self.d(dp * kpp) # idk frames or something
+        twist_msg.angular.z = self.d(dy * -kpy)
+        
+        # self.get_logger().info(f'Tr: {tr:.3f} \t Cr: {cr:.3f} \t Drpy: {dr:.3f}')
+        self.get_logger().info(f'Trpy: {tr:.3f} {tp:.3f} {ty:.3f} \t Crpy: {cr:.3f} {cp:.3f} {cy:.3f} \t Drpy: {dr:.3f} {dp:.3f} {dy:.3f}')
+
+        return twist_msg
+
 
     def apply_downward_force_and_translate(self):
         fz = self.wrench.wrench.force.z 
@@ -115,18 +187,19 @@ class ScanNode(Node):
 
         # Looks like when hanging still, force is 29
         # Pretty noisy, but hangs round 29.0 - 29.4
-        TRIM = 29.3
-        target_force_z = -5.0  # Force "target" in z direction
-        kpz = 0.45             # Factor for 'correction' Main driver in Up/down
+        # TRIM = 29.3
+        target_force_z = -10.0  # Force "target" in z direction
+        kpz = 0.5             # Factor for 'correction' Main driver in Up/down
 
         FORCE_Z_TOL = 0.1
-        FORCE_X_TOL = 0.5
-        kpx = 0.2   # slowdown in L-R based on force in X
-        kpxz = 0.2  # slowdown in U-D based on force in X
+        FORCE_X_TOL = 1.0
+        kpx = 0.8   # speed in L-R based on force in X
+        kpxz = 0.3  # slowdown in U-D based on force in X
         kpr = 10.0   # rotation speed based on force in X
-        BASE_X_SPEED = 2.0  # CHANGE THIS TO CHANGE DIRECTION
+        BASE_X_SPEED = 4.0  # CHANGE THIS TO CHANGE DIRECTION
 
-        forceErrZ = fz - target_force_z - TRIM
+        # forceErrZ = fz - target_force_z - TRIM
+        forceErrZ = fz - target_force_z 
 
 
         twist_msg.linear.z = self.d(forceErrZ * kpz)
@@ -136,6 +209,7 @@ class ScanNode(Node):
 
         # slow down in x if force in x is high IN EITHER DIRECTION
         twist_msg.linear.x -= self.d(fx * kpx * (1 if fx > 0 else -1)) 
+        # twist_msg.linear.x -= self.d(fx * kpx * (1 if fx > 0 else 1)) 
 
         # move up faster if fx is bigger, down faster if fx < 0
         # twist_msg.linear.z += self.d(fx * -kpxz)
@@ -145,7 +219,8 @@ class ScanNode(Node):
             twist_msg.angular.y = self.d(fx*kpr)
 
         # self.get_logger().info(f'fz: {fz:.4f}\t Adjusted: {(fz-TRIM):.3f}\tforceErrZ: {forceErrZ:.4f}')
-        self.get_logger().info(f'fx: {fx:.4f}')
+        # self.get_logger().info(f'fx: {fx:.4f}')
+        # self.get_logger().info(f'forceErrZ: {forceErrZ:.4f}\tfx: {fx:.4f}')
         return twist_msg
 
 
